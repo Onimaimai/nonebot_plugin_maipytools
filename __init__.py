@@ -22,9 +22,6 @@ __plugin_meta__ = PluginMetadata(
     """.strip()
 )
 
-#发票2/3/5/6 - 获取功能票
-#解歌id - 解锁谱面
-
 # 创建API实例
 api = MaimaiAPI()
 
