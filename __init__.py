@@ -8,6 +8,7 @@ import aiohttp
 import asyncio
 import os
 from .utils import MaimaiAPI, format_region_info, format_player_info, format_scores
+from datetime import datetime
 
 __plugin_meta__ = PluginMetadata(
     name="舞萌工具",
@@ -53,24 +54,52 @@ async def handle_bind(event: MessageEvent, args: Message = CommandArg()):
 regions = on_command("mair",aliases={"mairegion","舞萌地区"}, priority=5, block=True)
 @regions.handle()
 async def handle_regions(event: MessageEvent):
-    user_id = str(event.user_id)
+    # 检查是否at了其他用户
+    at_user_id = None
+    if event.reply and event.reply.sender:
+        at_user_id = str(event.reply.sender.user_id)
+    else:
+        for seg in event.message:
+            if seg.type == "at":
+                at_user_id = str(seg.data.get("qq"))
+                break
+    user_id = at_user_id if at_user_id else str(event.user_id)
     user_data = api.get_user_data(user_id)
-    
     if not user_data or not user_data.credentials:
-        await regions.finish("请发送：\nmaibind 二维码识别内容",reply_message=True) #"请先@我使用 mai bind 绑定舞萌公众号"
-    
-
+        if at_user_id:
+            await regions.finish(f"对方未绑定账号，无法查询。",reply_message=True)
+        else:
+            await regions.finish("请发送：\nmaibind 二维码识别内容",reply_message=True)
     region_data = await api.get_regions(user_data.credentials)
     formatted_regions = format_region_info(region_data)
-        
     msg = []
-    for region in formatted_regions:
+    total_play_count = 0
+    earliest_time = None
+    for idx, region in enumerate(formatted_regions):
         msg.extend([
             f"{region['区域名称']}：",
-            f"游玩次数: {region['游玩次数']}次",
-            f"首次游玩: {region['首次游玩时间']}",
+            f"游玩次数: {region['游玩次数']}",
+            f"首次游玩: {region['首次游玩时间']}"
         ])
-        
+        if idx != len(formatted_regions) - 1:
+            msg.append("")  # 城市间空一行
+        total_play_count += region['游玩次数']
+        try:
+            t = datetime.strptime(region['首次游玩时间'], '%Y-%m-%d %H:%M:%S')
+            if earliest_time is None or t < earliest_time:
+                earliest_time = t
+        except Exception:
+            pass
+    # 计算入坑天数
+    if earliest_time:
+        from datetime import datetime as dt
+        days = (dt.now() - earliest_time).days
+        msg.append(f"\n已入坑{days}天，累计游玩{total_play_count}次")
+    else:
+        msg.append(f"\n累计游玩{total_play_count}次")
+    # 移除末尾空行（如果有）
+    while msg and msg[-1] == "":
+        msg.pop()
     await regions.finish("\n".join(msg),reply_message=True)
 
 
